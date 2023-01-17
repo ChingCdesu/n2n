@@ -71,6 +71,8 @@ typedef unsigned long in_addr_t;
 #endif/* BYTE_ORDER */
 #endif/* __OPENBSD__ */
 
+#include "speck.h"
+
 
 #if __BYTE_ORDER == __LITTLE_ENDIAN
 #ifndef __LITTLE_ENDIAN__
@@ -240,7 +242,7 @@ typedef char macstr_t[N2N_MACSTR_SIZE];
 typedef char dec_ip_str_t[N2N_NETMASK_STR_SIZE];
 typedef char dec_ip_bit_str_t[N2N_NETMASK_STR_SIZE + 4];
 
-typedef struct speck_context_t he_context_t;
+typedef speck_context_t he_context_t;
 typedef char n2n_sn_name_t[N2N_EDGE_SN_HOST_SIZE];
 
 typedef enum n2n_pc {
