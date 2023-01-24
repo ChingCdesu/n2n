@@ -4,6 +4,7 @@ include(CheckFunctionExists)
 SET(CMAKE_VERBOSE_MAKEFILE ON)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # N2n release information
 set(N2N_VERSION "3.0.0")
@@ -34,7 +35,6 @@ endif (GIT_ERROR_CODE EQUAL 0)
 add_definitions(-DCMAKE_BUILD)
 add_definitions(-DGIT_RELEASE="${N2N_VERSION}" -DPACKAGE_VERSION="${N2N_VERSION}" -DPACKAGE_OSNAME="${N2N_OSNAME}")
 add_definitions(-DN2N_VERSION="${N2N_VERSION}" -DN2N_OSNAME="${N2N_OSNAME}")
-
 
 # Build information
 OPTION(BUILD_SHARED_LIBS "BUILD Shared Library" OFF)
