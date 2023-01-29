@@ -279,6 +279,14 @@ int assign_one_ip_subnet (n2n_sn_t *sss, struct sn_community *comm);
 const char* compression_str (uint8_t cmpr);
 const char* transop_str (enum n2n_transform tr);
 
+int re_register_and_purge_supernodes (n2n_sn_t *sss, struct sn_community *comm, time_t *p_last_re_reg_and_purge, time_t now, uint8_t forced);
+void close_tcp_connection(n2n_sn_t *sss, n2n_tcp_connection_t *conn);
+ssize_t sendto_peer(n2n_sn_t *sss, const struct peer_info *peer,
+                           const uint8_t *pktbuf, size_t pktsize);
+void send_re_register_super(n2n_sn_t *sss);
+void calculate_shared_secrets (n2n_sn_t *sss);
+void calculate_dynamic_keys (n2n_sn_t *sss);
+
 void handleMgmtJson (n2n_edge_t *eee, char *udp_buf, const struct sockaddr_in sender_sock);
 void handleMgmtJson_sn (n2n_sn_t *sss, char *udp_buf, const struct sockaddr_in sender_sock);
 #endif /* _N2N_H_ */

@@ -25,11 +25,6 @@ int resolve_check (n2n_resolve_parameter_t *param, uint8_t resolution_request, t
 int resolve_cancel_thread (n2n_resolve_parameter_t *param);
 
 
-static ssize_t sendto_peer (n2n_sn_t *sss,
-                            const struct peer_info *peer,
-                            const uint8_t *pktbuf,
-                            size_t pktsize);
-
 static int sendto_mgmt (n2n_sn_t *sss,
                         const struct sockaddr_in *sender_sock,
                         const uint8_t *mgmt_buf,
@@ -46,12 +41,6 @@ static int update_edge (n2n_sn_t *sss,
                         n2n_auth_t *answer_auth,
                         int skip_add,
                         time_t now);
-
-static int re_register_and_purge_supernodes (n2n_sn_t *sss,
-                                             struct sn_community *comm,
-                                             time_t *p_last_re_reg_and_purge,
-                                             time_t now,
-                                             uint8_t forced);
 
 static int purge_expired_communities (n2n_sn_t *sss,
                                       time_t* p_last_purge,
@@ -553,7 +542,7 @@ static ssize_t sendto_sock(n2n_sn_t *sss,
  *
  *    @return -1 on error otherwise number of bytes sent
  */
-static ssize_t sendto_peer (n2n_sn_t *sss,
+ssize_t sendto_peer (n2n_sn_t *sss,
                             const struct peer_info *peer,
                             const uint8_t *pktbuf,
                             size_t pktsize) {
@@ -1336,7 +1325,7 @@ static int find_edge_time_stamp_and_verify (struct peer_info * edges,
 }
 
 
-static int re_register_and_purge_supernodes (n2n_sn_t *sss, struct sn_community *comm, time_t *p_last_re_reg_and_purge, time_t now, uint8_t forced) {
+int re_register_and_purge_supernodes (n2n_sn_t *sss, struct sn_community *comm, time_t *p_last_re_reg_and_purge, time_t now, uint8_t forced) {
 
     time_t time;
     struct peer_info *peer, *tmp;
