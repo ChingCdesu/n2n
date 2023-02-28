@@ -2887,7 +2887,7 @@ int run_sn_loop (n2n_sn_t *sss) {
 #endif /* N2N_HAVE_TCP */
 
             // handle management port input
-            if(FD_ISSET(sss->mgmt_sock, &socket_mask)) {
+            if(sss->mgmt_sock >= 0 && FD_ISSET(sss->mgmt_sock, &socket_mask)) {
                 struct sockaddr_in sender_sock;
                 size_t i;
 
