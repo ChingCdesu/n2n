@@ -2729,11 +2729,13 @@ int run_sn_loop (n2n_sn_t *sss) {
         FD_ZERO(&socket_mask);
 
         FD_SET(sss->sock, &socket_mask);
+        traceEvent(TRACE_DEBUG, "sock select() on %d", sss->sock);
 #ifdef N2N_HAVE_TCP
         FD_SET(sss->tcp_sock, &socket_mask);
 #endif
         if (sss->mgmt_sock >= 0) {
             FD_SET(sss->mgmt_sock, &socket_mask);
+            traceEvent(TRACE_DEBUG, "mgmt_sock select() on %d", sss->mgmt_sock);
         }
 
         max_sock = MAX(MAX(sss->sock, sss->mgmt_sock), sss->tcp_sock);
