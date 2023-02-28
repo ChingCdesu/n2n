@@ -2732,7 +2732,9 @@ int run_sn_loop (n2n_sn_t *sss) {
 #ifdef N2N_HAVE_TCP
         FD_SET(sss->tcp_sock, &socket_mask);
 #endif
-        FD_SET(sss->mgmt_sock, &socket_mask);
+        if (sss->mgmt_sock >= 0) {
+            FD_SET(sss->mgmt_sock, &socket_mask);
+        }
 
         max_sock = MAX(MAX(sss->sock, sss->mgmt_sock), sss->tcp_sock);
 
