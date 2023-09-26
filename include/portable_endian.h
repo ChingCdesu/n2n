@@ -216,6 +216,8 @@
 #               define htobe16(x) be16toh(x)
 #       endif
 
+#elif defined(EMSCRIPTEN)
+#   include <endian.h>
 
 #else
 
