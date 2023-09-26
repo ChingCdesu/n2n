@@ -297,8 +297,8 @@ void send_re_register_super(n2n_sn_t *sss);
 void calculate_shared_secrets (n2n_sn_t *sss);
 void calculate_dynamic_keys (n2n_sn_t *sss);
 
-void handleMgmtJson (n2n_edge_t *eee, char *udp_buf, const struct sockaddr_in sender_sock);
-void handleMgmtJson_sn (n2n_sn_t *sss, char *udp_buf, const struct sockaddr_in sender_sock);
+// void handleMgmtJson (n2n_edge_t *eee, char *udp_buf, const struct sockaddr_in sender_sock);
+// void handleMgmtJson_sn (n2n_sn_t *sss, char *udp_buf, const struct sockaddr_in sender_sock);
 
 void readFromMgmtSocket (n2n_edge_t *eee);
 

@@ -29,7 +29,7 @@ static int sendto_mgmt (n2n_sn_t *sss,
                         const struct sockaddr_in *sender_sock,
                         const uint8_t *mgmt_buf,
                         size_t mgmt_size);
-static ssize_t sendto_peer (n2n_sn_t *sss,
+ssize_t sendto_peer (n2n_sn_t *sss,
                             const struct peer_info *peer,
                             const uint8_t *pktbuf,
                             size_t pktsize);
