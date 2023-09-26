@@ -1,5 +1,5 @@
 /**
- * (C) 2007-21 - ntop.org and contributors
+ * (C) 2007-22 - ntop.org and contributors
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -290,7 +290,13 @@ static int setOption (int optkey, char *_optarg, n2n_sn_t *sss) {
         }
 #ifdef SN_MANUAL_MAC
         case 'm': {/* MAC address */
-            str2mac(sss->mac_addr,_optarg);
+            str2mac(sss->mac_addr, _optarg);
+
+            // clear multicast bit
+            sss->mac_addr[0] &= ~0x01;
+            // set locally-assigned bit
+            sss->mac_addr[0] |= 0x02;
+
             break;
         }
 #endif
@@ -633,10 +639,24 @@ int main (int argc, char * const argv[]) {
         scan->socket_fd = sss_node.sock;
 
 #ifndef WIN32
+    /*
+     * If no uid/gid is specified on the commandline, use the uid/gid of the
+     * first found out of user "n2n" or "nobody"
+     */
     if(((pw = getpwnam ("n2n")) != NULL) || ((pw = getpwnam ("nobody")) != NULL)) {
+        /*
+         * If the uid/gid is not set from the CLI, set it from getpwnam
+         * otherwise reset it to zero
+         * (TODO: this looks wrong)
+         */
         sss_node.userid = sss_node.userid == 0 ? pw->pw_uid : 0;
         sss_node.groupid = sss_node.groupid == 0 ? pw->pw_gid : 0;
     }
+
+    /*
+     * If we have a non-zero requested uid/gid, attempt to switch to use
+     * those
+     */
     if((sss_node.userid != 0) || (sss_node.groupid != 0)) {
         traceEvent(TRACE_NORMAL, "dropping privileges to uid=%d, gid=%d",
 	                 (signed int)sss_node.userid, (signed int)sss_node.groupid);
@@ -645,7 +665,6 @@ int main (int argc, char * const argv[]) {
         if((setgid(sss_node.groupid) != 0)
            || (setuid(sss_node.userid) != 0)) {
             traceEvent(TRACE_ERROR, "unable to drop privileges [%u/%s]", errno, strerror(errno));
-            exit(1);
         }
     }
 

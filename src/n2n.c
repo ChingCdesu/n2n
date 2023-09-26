@@ -1,5 +1,5 @@
 /**
- * (C) 2007-21 - ntop.org and contributors
+ * (C) 2007-22 - ntop.org and contributors
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -148,8 +148,9 @@ void traceEvent (int eventTraceLevel, char* file, int line, char * format, ...) 
             snprintf(out_buf, sizeof(out_buf), "%s%s", extra_msg, buf);
             syslog(LOG_INFO, "%s", out_buf);
         } else {
+#endif
             for(i = strlen(file) - 1; i > 0; i--) {
-                if(file[i] == '/') {
+                if((file[i] == '/') || (file[i] == '\\')) {
                     i++;
                     break;
                 }
@@ -157,18 +158,8 @@ void traceEvent (int eventTraceLevel, char* file, int line, char * format, ...) 
             snprintf(out_buf, sizeof(out_buf), "%s [%s:%d] %s%s", theDate, &file[i], line, extra_msg, buf);
             fprintf(traceFile, "%s\n", out_buf);
             fflush(traceFile);
+#ifndef WIN32
         }
-#else
-        /* this is the WIN32 code */
-        for(i = strlen(file) - 1; i > 0; i--) {
-            if(file[i] == '\\') {
-                i++;
-                break;
-            }
-        }
-        snprintf(out_buf, sizeof(out_buf), "%s [%s:%d] %s%s", theDate, &file[i], line, extra_msg, buf);
-        fprintf(traceFile, "%s\n", out_buf);
-        fflush(traceFile);
 #endif
     }
 
@@ -313,9 +304,9 @@ int supernode2sock (n2n_sock_t *sn, const n2n_sn_name_t addrIn) {
 }
 
 
+#ifdef HAVE_PTHREAD
 N2N_THREAD_RETURN_DATATYPE resolve_thread(N2N_THREAD_PARAMETER_DATATYPE p) {
 
-#ifdef HAVE_PTHREAD
     n2n_resolve_parameter_t *param = (n2n_resolve_parameter_t*)p;
     n2n_resolve_ip_sock_t   *entry, *tmp_entry;
     time_t                  rep_time = N2N_RESOLVE_INTERVAL / 10;
@@ -360,8 +351,8 @@ N2N_THREAD_RETURN_DATATYPE resolve_thread(N2N_THREAD_PARAMETER_DATATYPE p) {
         // unlock access
         pthread_mutex_unlock(&param->access);
     }
-#endif
 }
+#endif
 
 
 int resolve_create_thread (n2n_resolve_parameter_t **param, struct peer_info *sn_list) {
@@ -403,6 +394,8 @@ int resolve_create_thread (n2n_resolve_parameter_t **param, struct peer_info *sn
     pthread_mutex_init(&((*param)->access), NULL);
 
     return 0;
+#else
+    return -1;
 #endif
 }
 
@@ -589,8 +582,8 @@ void print_n2n_version () {
 
     printf("Welcome to n2n v.%s for %s\n"
            "Built on %s\n"
-           "Copyright 2007-2021 - ntop.org and contributors\n\n",
-           GIT_RELEASE, PACKAGE_OSNAME, PACKAGE_BUILDDATE);
+           "Copyright 2007-2022 - ntop.org and contributors\n\n",
+           PACKAGE_VERSION, PACKAGE_OSNAME, PACKAGE_BUILDDATE);
 }
 
 /* *********************************************** */
@@ -643,6 +636,8 @@ size_t purge_peer_list (struct peer_info **peer_list,
                 }
             }
             HASH_DEL(*peer_list, scan);
+            mgmt_event_post(N2N_EVENT_PEER,N2N_EVENT_PEER_PURGE,scan);
+            /* FIXME: generates events for more than just p2p */
             retval++;
             free(scan);
         }
@@ -659,6 +654,8 @@ size_t clear_peer_list (struct peer_info ** peer_list) {
 
     HASH_ITER(hh, *peer_list, scan, tmp) {
         HASH_DEL(*peer_list, scan);
+        mgmt_event_post(N2N_EVENT_PEER,N2N_EVENT_PEER_CLEAR,scan);
+        /* FIXME: generates events for more than just p2p */
         retval++;
         free(scan);
     }

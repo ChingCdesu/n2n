@@ -1,5 +1,5 @@
 /**
- * (C) 2007-21 - ntop.org and contributors
+ * (C) 2007-22 - ntop.org and contributors
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -29,6 +29,10 @@ static int sendto_mgmt (n2n_sn_t *sss,
                         const struct sockaddr_in *sender_sock,
                         const uint8_t *mgmt_buf,
                         size_t mgmt_size);
+static ssize_t sendto_peer (n2n_sn_t *sss,
+                            const struct peer_info *peer,
+                            const uint8_t *pktbuf,
+                            size_t pktsize);
 
 static uint16_t reg_lifetime (n2n_sn_t *sss);
 
@@ -50,7 +54,7 @@ static int sort_communities (n2n_sn_t *sss,
                              time_t* p_last_sort,
                              time_t now);
 
-static int process_mgmt (n2n_sn_t *sss,
+int process_mgmt (n2n_sn_t *sss,
                          const struct sockaddr_in *sender_sock,
                          char *mgmt_buf,
                          size_t mgmt_size,
@@ -581,7 +585,8 @@ static int try_broadcast (n2n_sn_t * sss,
                           const n2n_mac_t srcMac,
                           uint8_t from_supernode,
                           const uint8_t * pktbuf,
-                          size_t pktsize) {
+                          size_t pktsize,
+                          time_t now) {
 
     struct peer_info        *scan, *tmp;
     macstr_t                mac_buf;
@@ -598,22 +603,26 @@ static int try_broadcast (n2n_sn_t * sss,
         HASH_ITER(hh, sss->federation->edges, scan, tmp) {
             int data_sent_len;
 
-            data_sent_len = sendto_peer(sss, scan, pktbuf, pktsize);
+            // only forward to active supernodes
+            if(scan->last_seen + LAST_SEEN_SN_INACTIVE > now) {
 
-            if(data_sent_len != pktsize) {
-                ++(sss->stats.errors);
-                traceEvent(TRACE_WARNING, "multicast %lu to supernode [%s] %s failed %s",
-                           pktsize,
-                           sock_to_cstr(sockbuf, &(scan->sock)),
-                           macaddr_str(mac_buf, scan->mac_addr),
-                           strerror(errno));
-             } else {
-                 ++(sss->stats.broadcast);
-                 traceEvent(TRACE_DEBUG, "multicast %lu to supernode [%s] %s",
-                            pktsize,
-                            sock_to_cstr(sockbuf, &(scan->sock)),
-                            macaddr_str(mac_buf, scan->mac_addr));
-             }
+                data_sent_len = sendto_peer(sss, scan, pktbuf, pktsize);
+
+                if(data_sent_len != pktsize) {
+                    ++(sss->stats.errors);
+                    traceEvent(TRACE_WARNING, "multicast %lu to supernode [%s] %s failed %s",
+                               pktsize,
+                               sock_to_cstr(sockbuf, &(scan->sock)),
+                               macaddr_str(mac_buf, scan->mac_addr),
+                               strerror(errno));
+                 } else {
+                     ++(sss->stats.broadcast);
+                     traceEvent(TRACE_DEBUG, "multicast %lu to supernode [%s] %s",
+                                pktsize,
+                                sock_to_cstr(sockbuf, &(scan->sock)),
+                                macaddr_str(mac_buf, scan->mac_addr));
+                 }
+            }
         }
     }
 
@@ -653,7 +662,8 @@ static int try_forward (n2n_sn_t * sss,
                         const n2n_mac_t dstMac,
                         uint8_t from_supernode,
                         const uint8_t * pktbuf,
-                        size_t pktsize) {
+                        size_t pktsize,
+                        time_t now) {
 
     struct peer_info *             scan;
     node_supernode_association_t   *assoc;
@@ -693,7 +703,7 @@ static int try_forward (n2n_sn_t * sss,
             } else {
                 // forwarding packet to all federated supernodes
                 traceEvent(TRACE_DEBUG, "unknown mac address, broadcasting packet to all federated supernodes");
-                try_broadcast(sss, NULL, cmn, sss->mac_addr, from_supernode, pktbuf, pktsize);
+                try_broadcast(sss, NULL, cmn, sss->mac_addr, from_supernode, pktbuf, pktsize, now);
             }
         } else {
             traceEvent(TRACE_DEBUG, "unknown mac address in packet from a supernode, dropping the packet");
@@ -730,7 +740,7 @@ int sn_init_defaults (n2n_sn_t *sss) {
 
     memset(sss, 0, sizeof(n2n_sn_t));
 
-    strncpy(sss->version, GIT_RELEASE, sizeof(n2n_version_t));
+    strncpy(sss->version, PACKAGE_VERSION, sizeof(n2n_version_t));
     sss->version[sizeof(n2n_version_t) - 1] = '\0';
     sss->daemon = 1; /* By defult run as a daemon. */
     sss->lport = N2N_SN_LPORT_DEFAULT;
@@ -1490,170 +1500,6 @@ static int sort_communities (n2n_sn_t *sss,
 }
 
 
-static int process_mgmt (n2n_sn_t *sss,
-                         const struct sockaddr_in *sender_sock,
-                         char *mgmt_buf,
-                         size_t mgmt_size,
-                         time_t now) {
-
-    char resbuf[N2N_SN_PKTBUF_SIZE];
-    size_t ressize = 0;
-    uint32_t num_edges = 0;
-    uint32_t num_comm = 0;
-    uint32_t num = 0;
-    struct sn_community *community, *tmp;
-    struct peer_info *peer, *tmpPeer;
-    macstr_t mac_buf;
-    n2n_sock_str_t sockbuf;
-    char time_buf[10]; /* 9 digits + 1 terminating zero */
-    dec_ip_bit_str_t ip_bit_str = {'\0'};
-
-    traceEvent(TRACE_DEBUG, "process_mgmt");
-
-    /* avoid parsing any uninitialized junk from the stack */
-    mgmt_buf[mgmt_size] = 0;
-
-    // process input, if any
-        if((0 == memcmp(mgmt_buf, "help", 4)) || (0 == memcmp(mgmt_buf, "?", 1))) {
-            ressize += snprintf(resbuf + ressize, N2N_SN_PKTBUF_SIZE - ressize,
-                                "Help for supernode management console:\n"
-                                "\thelp                 | This help message\n"
-                                "\treload_communities   | Reloads communities and user's public keys\n"
-                                "\t<enter>              | Display status and statistics\n");
-            sendto_mgmt(sss, sender_sock, (const uint8_t *) resbuf, ressize);
-            return 0; /* no status output afterwards */
-        }
-
-        if(0 == memcmp(mgmt_buf, "reload_communities", 18)) {
-            if(!sss->community_file) {
-                ressize += snprintf(resbuf + ressize, N2N_SN_PKTBUF_SIZE - ressize,
-                                    "No community file provided (-c command line option)\n");
-                sendto_mgmt(sss, sender_sock, (const uint8_t *) resbuf, ressize);
-                return 0; /* no status output afterwards */
-            }
-            traceEvent(TRACE_NORMAL, "'reload_communities' command");
-
-            if(load_allowed_sn_community(sss)) {
-                ressize += snprintf(resbuf + ressize, N2N_SN_PKTBUF_SIZE - ressize,
-                                    "Error while re-loading community file (not found or no valid content)\n");
-                sendto_mgmt(sss, sender_sock, (const uint8_t *) resbuf, ressize);
-                return 0; /* no status output afterwards */
-            }
-            ressize += snprintf(resbuf + ressize, N2N_SN_PKTBUF_SIZE - ressize,
-                                "OK.\n");
-            sendto_mgmt(sss, sender_sock, (const uint8_t *) resbuf, ressize);
-            return 0; /* no status output afterwards */
-        }
-
-    if((mgmt_buf[0] == 'r' || mgmt_buf[0] == 'w') && (mgmt_buf[1] == ' ')) {
-        /* this is a JSON request */
-        handleMgmtJson_sn(sss, mgmt_buf, *sender_sock);
-        return 0;
-    }
-
-    // output current status
-
-    ressize += snprintf(resbuf + ressize, N2N_SN_PKTBUF_SIZE - ressize,
-                        " ### | TAP                 | MAC               | EDGE                      | HINT            | LAST SEEN\n");
-    ressize += snprintf(resbuf + ressize, N2N_SN_PKTBUF_SIZE - ressize,
-                        "========================================================================================================\n");
-    HASH_ITER(hh, sss->communities, community, tmp) {
-        if(num_comm)
-            ressize += snprintf(resbuf + ressize, N2N_SN_PKTBUF_SIZE - ressize,
-                                "--------------------------------------------------------------------------------------------------------\n");
-        num_comm++;
-        num_edges += HASH_COUNT(community->edges);
-
-        ressize += snprintf(resbuf + ressize, N2N_SN_PKTBUF_SIZE - ressize,
-                            "%s '%s'\n",
-                            (community->is_federation) ? "FEDERATION" :
-                                                                      ((community->purgeable == COMMUNITY_UNPURGEABLE) ? "FIXED NAME COMMUNITY" : "COMMUNITY"),
-                            (community->is_federation) ? "-/-" : community->community);
-        sendto_mgmt(sss, sender_sock, (const uint8_t *) resbuf, ressize);
-        ressize = 0;
-
-        num = 0;
-        HASH_ITER(hh, community->edges, peer, tmpPeer) {
-            sprintf (time_buf, "%9u", (unsigned int)(now - peer->last_seen));
-            ressize += snprintf(resbuf + ressize, N2N_SN_PKTBUF_SIZE - ressize,
-                                "%4u | %-19s | %-17s | %-21s %-3s | %-15s | %9s\n",
-                                ++num,
-                                (peer->dev_addr.net_addr == 0) ? ((peer->purgeable == SN_UNPURGEABLE) ? "-l" : "") :
-                                                                   ip_subnet_to_str(ip_bit_str, &peer->dev_addr),
-                                (is_null_mac(peer->mac_addr)) ? "" : macaddr_str(mac_buf, peer->mac_addr),
-                                sock_to_cstr(sockbuf, &(peer->sock)),
-                                ((peer->socket_fd >= 0) && (peer->socket_fd != sss->sock)) ? "TCP" : "",
-                                peer->dev_desc,
-                                (peer->last_seen) ? time_buf : "");
-
-            sendto_mgmt(sss, sender_sock, (const uint8_t *) resbuf, ressize);
-            ressize = 0;
-        }
-    }
-    ressize += snprintf(resbuf + ressize, N2N_SN_PKTBUF_SIZE - ressize,
-                        "========================================================================================================\n");
-
-    ressize += snprintf(resbuf + ressize, N2N_SN_PKTBUF_SIZE - ressize,
-                        "uptime %lu | ", (now - sss->start_time));
-
-    ressize += snprintf(resbuf + ressize, N2N_SN_PKTBUF_SIZE - ressize,
-                        "edges %u | ",
-                        num_edges);
-
-    ressize += snprintf(resbuf + ressize, N2N_SN_PKTBUF_SIZE - ressize,
-                        "reg_sup %u | ",
-                        (unsigned int) sss->stats.reg_super);
-
-    ressize += snprintf(resbuf + ressize, N2N_SN_PKTBUF_SIZE - ressize,
-                        "reg_nak %u | ",
-                        (unsigned int) sss->stats.reg_super_nak);
-
-    ressize += snprintf(resbuf + ressize, N2N_SN_PKTBUF_SIZE - ressize,
-                        "errors %u \n",
-                        (unsigned int) sss->stats.errors);
-
-    ressize += snprintf(resbuf + ressize, N2N_SN_PKTBUF_SIZE - ressize,
-                        "fwd %u | ",
-                        (unsigned int) sss->stats.fwd);
-
-    ressize += snprintf(resbuf + ressize, N2N_SN_PKTBUF_SIZE - ressize,
-                        "broadcast %u | ",
-                        (unsigned int) sss->stats.broadcast);
-
-    ressize += snprintf(resbuf + ressize, N2N_SN_PKTBUF_SIZE - ressize,
-                        "cur_cmnts %u\n", HASH_COUNT(sss->communities));
-
-    ressize += snprintf(resbuf + ressize, N2N_SN_PKTBUF_SIZE - ressize,
-                        "last_fwd  %lu sec ago | ",
-                        (long unsigned int) (now - sss->stats.last_fwd));
-
-    ressize += snprintf(resbuf + ressize, N2N_SN_PKTBUF_SIZE - ressize,
-                        "last reg  %lu sec ago\n\n",
-                        (long unsigned int) (now - sss->stats.last_reg_super));
-
-    sendto_mgmt(sss, sender_sock, (const uint8_t *) resbuf, ressize);
-
-    return 0;
-}
-
-
-static int sendto_mgmt (n2n_sn_t *sss,
-                        const struct sockaddr_in *sender_sock,
-                        const uint8_t *mgmt_buf,
-                        size_t mgmt_size) {
-
-    ssize_t r = sendto(sss->mgmt_sock, (void *)mgmt_buf, mgmt_size, 0 /*flags*/,
-                       (struct sockaddr *)sender_sock, sizeof (struct sockaddr_in));
-
-    if(r <= 0) {
-        ++(sss->stats.errors);
-        traceEvent (TRACE_ERROR, "sendto_mgmt : sendto failed. %s", strerror (errno));
-        return -1;
-    }
-
-    return 0;
-}
-
 /** Examine a datagram and determine what to do with it.
  *
  */
@@ -1907,9 +1753,9 @@ static int process_udp (n2n_sn_t * sss,
 
             /* Common section to forward the final product. */
             if(unicast) {
-                try_forward(sss, comm, &cmn, pkt.dstMac, from_supernode, rec_buf, encx);
+                try_forward(sss, comm, &cmn, pkt.dstMac, from_supernode, rec_buf, encx, now);
             } else {
-                try_broadcast(sss, comm, &cmn, pkt.srcMac, from_supernode, rec_buf, encx);
+                try_broadcast(sss, comm, &cmn, pkt.srcMac, from_supernode, rec_buf, encx, now);
             }
             break;
         }
@@ -1975,7 +1821,7 @@ static int process_udp (n2n_sn_t * sss,
                                           comm->header_encryption_ctx_dynamic, comm->header_iv_ctx_dynamic,
                                           time_stamp());
                 }
-                try_forward(sss, comm, &cmn, reg.dstMac, from_supernode, rec_buf, encx); /* unicast only */
+                try_forward(sss, comm, &cmn, reg.dstMac, from_supernode, rec_buf, encx, now); /* unicast only */
             } else {
                 traceEvent(TRACE_ERROR, "Rx REGISTER with multicast destination");
             }
@@ -2219,7 +2065,7 @@ static int process_udp (n2n_sn_t * sss,
                             }
                         }
 
-                        try_broadcast(sss, NULL, &cmn, reg.edgeMac, from_supernode, ackbuf, encx);
+                        try_broadcast(sss, NULL, &cmn, reg.edgeMac, from_supernode, ackbuf, encx, now);
                     }
 
                     // dynamic key time handling if appropriate
@@ -2635,7 +2481,7 @@ static int process_udp (n2n_sn_t * sss,
                                                   time_stamp());
                         }
 
-                        try_broadcast(sss, NULL, &cmn, query.srcMac, from_supernode, encbuf, encx);
+                        try_broadcast(sss, NULL, &cmn, query.srcMac, from_supernode, encbuf, encx, now);
                     }
                 }
             }

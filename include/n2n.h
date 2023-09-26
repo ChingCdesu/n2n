@@ -1,5 +1,5 @@
 /**
- * (C) 2007-21 - ntop.org and contributors
+ * (C) 2007-22 - ntop.org and contributors
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -30,6 +30,8 @@
 
     tunctl -u UID -t tunX
 */
+
+#define SN_MANUAL_MAC   /* allows supernode MAC address to be set manually */
 
 #define N2N_HAVE_DAEMON /* needs to be defined before it gets undefined */
 #define N2N_HAVE_TCP    /* needs to be defined before it gets undefined */
@@ -101,7 +103,7 @@
 #include <syslog.h>
 #include <sys/wait.h>
 
-#ifdef HAVE_LIBZSTD
+#ifdef HAVE_ZSTD
 #include <zstd.h>
 #endif
 
@@ -156,6 +158,10 @@
 #include "network_traffic_filter.h"
 #include "auth.h"
 
+#if defined(HAVE_MINIUPNP) || defined(HAVE_NATPMP)
+#include "n2n_port_mapping.h"
+#endif // HAVE_MINIUPNP || HAVE_NATPMP
+
 /* ************************************** */
 
 #include "header_encryption.h"
@@ -177,6 +183,10 @@ int n2n_transop_tf_init (const n2n_edge_conf_t *conf, n2n_trans_op_t *ttt);
 int n2n_transop_aes_init (const n2n_edge_conf_t *conf, n2n_trans_op_t *ttt);
 int n2n_transop_cc20_init (const n2n_edge_conf_t *conf, n2n_trans_op_t *ttt);
 int n2n_transop_speck_init (const n2n_edge_conf_t *conf, n2n_trans_op_t *ttt);
+int n2n_transop_lzo_init (const n2n_edge_conf_t *conf, n2n_trans_op_t *ttt);
+#ifdef HAVE_ZSTD
+int n2n_transop_zstd_init (const n2n_edge_conf_t *conf, n2n_trans_op_t *ttt);
+#endif
 
 /* Log */
 void setTraceLevel (int level);
@@ -289,4 +299,9 @@ void calculate_dynamic_keys (n2n_sn_t *sss);
 
 void handleMgmtJson (n2n_edge_t *eee, char *udp_buf, const struct sockaddr_in sender_sock);
 void handleMgmtJson_sn (n2n_sn_t *sss, char *udp_buf, const struct sockaddr_in sender_sock);
+
+void readFromMgmtSocket (n2n_edge_t *eee);
+
+void mgmt_event_post (enum n2n_event_topic topic, int data0, void *data1);
+
 #endif /* _N2N_H_ */

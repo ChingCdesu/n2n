@@ -1,5 +1,5 @@
 /**
- * (C) 2007-21 - ntop.org and contributors
+ * (C) 2007-22 - ntop.org and contributors
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -180,7 +180,10 @@ static void help (int level) {
             "\n                      "
                "[-e <preferred local IP address>] [-S<level of solitude>]"
             "\n                      "
-               "[--select-rtt]"
+               "[--select-rtt] "
+#if defined(HAVE_MINIUPNP) || defined(HAVE_NATPMP)
+               "[--no-port-forwarding] "
+#endif // HAVE_MINIUPNP || HAVE_NATPMP
           "\n\n tap device and       "
                "[-a [static:|dhcp:]<tap IP address>[/<cidr suffix>]] "
             "\n overlay network      "
@@ -233,6 +236,9 @@ static void help (int level) {
           "\n                      [-E]  accept multicast MAC addresses"
           "\n            [--select-rtt]  select supernode by round trip time"
           "\n            [--select-mac]  select supernode by MAC address"
+#if defined(HAVE_MINIUPNP) || defined(HAVE_NATPMP)
+          "\n    [--no-port-forwarding]  disable UPnP/PMP port forwarding"
+#endif // HAVE_MINIUPNP || HAVE_NATPMP
 #ifndef WIN32
           "\n                      [-f]  do not fork but run in foreground"
 #endif
@@ -287,13 +293,17 @@ static void help (int level) {
         printf(" -H                | use header encryption, supernode needs fixed community\n");
         printf(" -z1 ... -z2       | compress outgoing data packets, -z1 = lzo1x,\n"
                "                   | "
-#ifdef N2N_HAVE_ZSTD
+#ifdef HAVE_ZSTD
                                      "-z2 = zstd, "
 #endif
                                      "disabled by default\n");
         printf("--select-rtt       | supernode selection based on round trip time\n"
                "--select-mac       | supernode selection based on MAC address (default:\n"
                "                   | by load)\n");
+#if defined(HAVE_MINIUPNP) || defined(HAVE_NATPMP)
+        printf("--no-port-...      | disable UPnP/PMP port forwarding\n"
+               "...forwarding      | \n");
+#endif // HAVE_MINIUPNP || HAVE_NATPMP
 
         printf ("\n");
         printf (" TAP DEVICE AND OVERLAY NETWORK CONFIGURATION\n");
@@ -373,7 +383,7 @@ static void setPayloadCompression (n2n_edge_conf_t *conf, int compression) {
             conf->compression = N2N_COMPRESSION_ID_LZO;
             break;
         }
-#ifdef N2N_HAVE_ZSTD
+#ifdef HAVE_ZSTD
         case 2: {
             conf->compression = N2N_COMPRESSION_ID_ZSTD;
             break;
@@ -752,6 +762,12 @@ static int setOption (int optkey, char *optargument, n2n_tuntap_priv_config_t *e
             break;
         }
 
+        case '}': /* disable port forwarding */ {
+            conf->port_forwarding = 0;
+
+            break;
+        }
+
         case 'h': /* quick reference */ {
             return 2;
         }
@@ -808,6 +824,7 @@ static const struct option long_options[] =
         { "select-rtt",          no_argument,       NULL, '[' }, /*                            '['             rtt selection strategy */
         { "select-mac",          no_argument,       NULL, ']' }, /*                            ']'             mac selection strategy */
         { "management-password", required_argument, NULL, '{' }, /*                            '{'             management port password */
+        { "no-port-forwarding",  no_argument,       NULL, '}' }, /*                            '}'             disable port forwarding */
         { NULL,                  0,                 NULL,  0  }
     };
 
@@ -1063,7 +1080,7 @@ int main (int argc, char* argv[]) {
             conf.federation_public_key = calloc(1, sizeof(n2n_private_public_key_t));
             if(conf.federation_public_key) {
                 traceEvent(TRACE_WARNING, "using default federation public key; FOR TESTING ONLY, usage of a custom federation name and key (-P) is highly recommended!");
-                generate_private_key(*(conf.federation_public_key), FEDERATION_NAME + 1);
+                generate_private_key(*(conf.federation_public_key), &FEDERATION_NAME[1]);
                 generate_public_key(*(conf.federation_public_key), *(conf.federation_public_key));
             }
         }
